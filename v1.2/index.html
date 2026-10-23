@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dodge Challenger R/T | Driving Simulator</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+  { "imports": { "three": "./vendor/three/build/three.module.js", "three/addons/": "./vendor/three/addons/" } }
+  </script>
+</head>
+<body>
+  <div id="game"></div>
+  <div id="loading">INITIALIZING SIMULATOR...</div>
+
+  <header class="hud top">
+    <h1>DODGE CHALLENGER R/T</h1>
+    <p id="viewSubtitle">FIRST-PERSON DRIVING EXPERIENCE · PRESS C TO SWITCH CAMERA</p>
+  </header>
+
+  <div class="hud speed">
+    <strong id="speed">000</strong><span>KM/H</span>
+    <div class="rpm"><div id="rpmFill"></div></div>
+    <span id="rpmText">0 RPM</span>
+    <div class="gear" id="gear">N</div>
+  </div>
+
+  <div class="hud bottom">
+    <div id="steering">STEERING: 0°</div>
+    <div id="message">Click the page, then press ↑ to accelerate</div>
+  </div>
+
+  <div id="help">
+    ↑ / W — THROTTLE<br>
+    ↓ / S — BRAKE<br>
+    ← → / A D — STEER<br>
+    SPACE — HANDBRAKE (DRIFT)<br>
+    SHIFT — NITRO<br>
+    C — SWITCH CAMERA · R — RADIO
+  </div>
+
+  <div class="drive-controls">
+    <button id="driftBtn" class="drive-btn"><span>DRIFT</span><small>HOLD TO SLIDE</small></button>
+    <button id="turboBtn" class="drive-btn"><span>⚡ TURBO</span><small>HOLD TO BOOST</small></button>
+    <button id="camBtn" class="drive-btn"><span>📷 CAM</span><small>COCKPIT / CHASE</small></button>
+  </div>
+
+  <div class="boost-panel">
+    <div class="boost-heading"><span>NITRO</span><span id="boostPercent">100%</span></div>
+    <div class="boost-track"><div id="boostFill"></div></div>
+  </div>
+
+  <!-- Radio / Music Panel -->
+  <div id="radio-panel">
+    <div class="radio-header">
+      <button id="playBtn" class="radio-play-btn" title="Play / Pause Radio (R)">▶</button>
+      <div class="radio-info">
+        <div id="trackTitle" class="track-title">No Track</div>
+        <div id="trackArtist" class="track-artist">Tap ▶ to play</div>
+      </div>
+    </div>
+    <div class="radio-controls">
+      <button id="prevBtn" class="radio-nav-btn" title="Previous Track ([)">⟵</button>
+      <button id="nextBtn" class="radio-nav-btn" title="Next Track (])">⟶</button>
+    </div>
+    <input id="volumeSlider" type="range" min="0" max="100" value="50" class="volume-slider" title="Radio Volume">
+  </div>
+
+  <script src="src/main.js" type="module"></script>
+</body>
+</html>
