@@ -10,7 +10,12 @@ const SOURCES = [new URL('music/playlist.php', ROOT), new URL('music/playlist.js
 const AUDIO_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]*\.(mp3|ogg|oga|opus|m4a|aac|wav|flac)$/;
 
 const cache = new Map();
-window.HOODMusicCache = Object.freeze({ urlFor: (file) => cache.get(file) || null, size: () => cache.size });
+if (typeof window !== 'undefined') {
+  window.HOODMusicCache = Object.freeze({
+    urlFor: (file) => cache.get(file) || null,
+                                        size: () => cache.size
+  });
+}
 
 async function catalogue() {
   for (const url of SOURCES) {
