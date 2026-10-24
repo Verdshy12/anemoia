@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HOOD v1.2.2</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="music/radio.css">
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./vendor/three/build/three.module.js",
+      "three/addons/": "./vendor/three/addons/"
+    }
+  }
+  </script>
+</head>
+<body>
+
+  <!-- Novatrix Media opening experience -->
+  <div id="splash-overlay">
+    <iframe
+      id="splash-frame"
+      src="Files/splash/splash.html"
+      title="Novatrix Media introduction"
+    ></iframe>
+  </div>
+
+  <div id="game" tabindex="0"></div>
+  <div id="loading">INITIALIZING SIMULATOR...</div>
+
+  <header class="hud top">
+    <h1>HOOD V1.2.2</h1>
+    <p id="viewSubtitle">PRESS C TO SWITCH CAMERA</p>
+  </header>
+
+  <!-- Route HUD (filled by src/main.js once a route is loaded) -->
+  <div class="hud route" id="routeHud">
+    <div class="route-name" id="routeName">ROUTE</div>
+    <div class="route-row"><span>REMAINING</span><strong id="routeLeft">—</strong></div>
+    <div class="route-track"><div id="routeFill"></div></div>
+  <!--  <button id="routesBtn" type="button">M · CHANGE ROUTE</button> -->
+  </div>
+
+  <div class="hud speed">
+    <strong id="speed">000</strong><span>KM/H</span>
+    <div class="rpm"><div id="rpmFill"></div></div>
+    <span id="rpmText">0 RPM</span>
+    <div class="gear" id="gear">N</div>
+  </div>
+
+<!--  <div class="hud bottom">
+    <div id="steering">STEERING: 0°</div>
+    <div id="message">Preparing your driving experience...</div>
+  </div> -->
+
+  <div id="help">
+    ↑ — THROTTLE<br>
+    ↓ — BRAKE<br>
+    ← → — STEER<br>
+    SPACE — DRIFT<br>
+    SHIFT — NITRO<br>
+    C — SWITCH CAMERA<br>
+    R — RADIO
+  </div>
+
+<!--  <div class="drive-controls">
+    <button id="driftBtn" class="drive-btn">
+      <span>DRIFT</span><small>HOLD TO SLIDE</small>
+    </button>
+    <button id="turboBtn" class="drive-btn">
+      <span>⚡ TURBO</span><small>HOLD TO BOOST</small>
+    </button>
+    <button id="camBtn" class="drive-btn">
+      <span>📷 CAM</span><small>COCKPIT / CHASE</small>
+    </button>
+  </div> --->
+
+  <div class="boost-panel">
+    <div class="boost-heading">
+      <span>NITRO</span><span id="boostPercent">100%</span>
+    </div>
+    <div class="boost-track"><div id="boostFill"></div></div>
+  </div>
+
+  <!-- HOOD Radio mounts here (music/radio.js) -->
+  <div id="hood-radio"></div>
+
+  <!-- Splash <-> engine communication -->
+  <script>
+    (() => {
+      const LOG = "[HOOD Parent]";
+      const overlay = document.getElementById("splash-overlay");
+      const frame = document.getElementById("splash-frame");
+      const loading = document.getElementById("loading");
+
+      let startRequested = false;
+      let sessionStarted = false;
+      let routeSelectionMade = false;
+      let lastLoad = null;
+
+      function post(message) {
+        if (!frame?.contentWindow) return;
+        frame.contentWindow.postMessage(message, window.location.origin);
+      }
+
+      function notifySplashGameReady() {
+        if (window.__game?.ready !== true) return;
+        post({ type: "HOOD_GAME_READY" });
+      }
+
+      // Re-send state the splash may have missed (e.g. a route preloaded from the URL).
+      function syncSplash() {
+        if (lastLoad) post(lastLoad);
+        notifySplashGameReady();
+        if (window.__game?.cars) {
+          post({ type: "HOOD_CARS", cars: window.__game.cars, defaultCar: window.__game.defaultCar });
+        }
+        if (window.__game?.routeReady === true) {
+          post({ type: "HOOD_ROUTE_READY", routeId: window.__game.route?.id });
+        }
+      }
+
+      // Handle either load order: game first or splash first.
+      frame.addEventListener("load", syncSplash);
+      window.addEventListener("hood:game-ready", notifySplashGameReady);
+      window.addEventListener("hood:cars", (e) => post({ type: "HOOD_CARS", ...e.detail }));
+
+      // Engine + route progress -> splash.
+      window.addEventListener("hood:load-progress", (e) => {
+        lastLoad = { type: "HOOD_LOAD_PROGRESS", ...e.detail };
+        post(lastLoad);
+      });
+      window.addEventListener("hood:route-progress", (e) => post({ type: "HOOD_ROUTE_PROGRESS", ...e.detail }));
+      window.addEventListener("hood:route-ready", (e) => post({ type: "HOOD_ROUTE_READY", ...e.detail }));
+      window.addEventListener("hood:route-error", (e) => post({ type: "HOOD_ROUTE_ERROR", ...e.detail }));
+
+      window.addEventListener("message", (event) => {
+        if (event.source !== frame.contentWindow) return;
+        if (event.origin !== window.location.origin) return;
+
+        const message = event.data;
+        if (!message || typeof message.type !== "string") return;
+        console.log(LOG, "<-", message.type, message);
+
+        if (message.type === "HOOD_SPLASH_LOADED") {
+          syncSplash();
+        }
+
+        // Player picked a road on the splash: load it in the background.
+        if (message.type === "HOOD_SELECT_ROUTE" && typeof message.routeId === "string") {
+          routeSelectionMade = true;
+          window.dispatchEvent(
+            new CustomEvent("hood:select-route", {
+              detail: { routeId: message.routeId, carId: message.carId, mode: message.mode }
+            })
+          );
+        }
+
+        // Splash asked to start driving.
+        if (message.type === "HOOD_START_GAME") {
+          const g = window.__game || {};
+          const state = {
+            ready: g.ready, routeReady: g.routeReady, routeLoading: g.routeLoading,
+            started: g.started, error: g.error, startRequested, sessionStarted, routeSelectionMade
+          };
+          console.log(LOG, "START_GAME state:", state);
+
+          if (g.ready !== true || g.routeReady !== true) {
+            console.warn(LOG, "Start rejected, route not ready:", state);
+            post({ type: "HOOD_START_REJECTED", needsRoute: !g.routeLoading });
+            return;
+          }
+          if (startRequested || sessionStarted) return;
+
+          startRequested = true;
+          window.__HOOD_START_REQUESTED = true;
+          window.focus();
+          window.dispatchEvent(new Event("hood:start-requested"));
+        }
+      });
+
+      // Dismiss the splash only after driving actually starts.
+      function dismissSplash() {
+        if (sessionStarted) return;
+        sessionStarted = true;
+
+        document.body.classList.add("driving");
+        post({ type: "HOOD_SESSION_STARTED" });
+
+        const route = window.__game?.route;
+        const routeName = document.getElementById("routeName");
+        if (route && routeName) {
+          routeName.textContent = route.short.toUpperCase() + " · " + route.name.toUpperCase();
+        }
+
+        overlay.classList.add("dismissed");
+        setTimeout(() => { overlay.style.display = "none"; }, 650);
+
+        // Hand keyboard focus back to the game page.
+        window.focus();
+      }
+
+      window.addEventListener("hood:session-started", dismissSplash);
+
+      // Fallback: catch sessions that started before the listener ran.
+      const splashStartWatch = setInterval(() => {
+        if (window.__game?.started) {
+          dismissSplash();
+          clearInterval(splashStartWatch);
+        }
+      }, 100);
+
+      window.addEventListener("hood:boot-error", (event) => {
+        loading.textContent = "FAILED TO LOAD — " + (event.detail?.message || "CHECK CONSOLE");
+        loading.style.opacity = "1";
+        loading.style.display = "grid";
+        post({ type: "HOOD_GAME_ERROR", message: event.detail?.message });
+      });
+
+      // Cover the case where the engine is already ready.
+      notifySplashGameReady();
+    })();
+  </script>
+
+  <script src="src/main.js" type="module"></script>
+  <script src="music/radio.js" type="module"></script>
+</body>
+</html>
