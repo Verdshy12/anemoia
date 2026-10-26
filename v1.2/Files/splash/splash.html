@@ -1,0 +1,152 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Novatrix Media — HOOD</title>
+  <link rel="stylesheet" href="splash.css">
+</head>
+<body tabindex="-1">
+
+  <!-- Sponsor Splash Screen -->
+  <div id="splash-screen" class="screen active">
+    <p class="sponsor-text">
+      This gaming experience has been sponsored by
+    </p>
+
+    <div class="logo-stage">
+      <img
+        src="novatrix.png"
+        alt="Novatrix Icon"
+        class="logo-img icon-only"
+      >
+      <img
+        src="novatrix-2.png"
+        alt="Novatrix Media Logo"
+        class="logo-img full-logo"
+      >
+    </div>
+
+    <div class="loader-track">
+      <div class="loader-fill"></div>
+    </div>
+  </div>
+
+  <!-- Main Game Menu -->
+  <div id="next-screen" class="screen">
+    <div class="game-container">
+      <h1 class="game-title">READY TO PLAY</h1>
+      <p class="game-subtitle">
+        Press any key to Continue
+      </p>
+      <button id="startGameBtn" class="start-btn" type="button">
+        START GAME
+      </button>
+    </div>
+  </div>
+
+
+<script>
+(() => {
+  const splashScreen = document.getElementById('splash-screen');
+  const menuScreen = document.getElementById('next-screen');
+  const startButton = document.getElementById('startGameBtn');
+
+  if (!splashScreen || !menuScreen || !startButton) {
+    console.error('[HOOD Splash] Required elements are missing.');
+    return;
+  }
+
+  let splashFinished = false;
+  let gameReady = false;
+  let started = false;
+
+  startButton.hidden = true;
+  startButton.disabled = true;
+
+  function notifyParent(type, extra = {}) {
+    window.parent.postMessage(
+      { type, ...extra },
+      window.location.origin
+    );
+  }
+
+  function updateScreen() {
+    // Do not leave the animation until BOTH conditions are satisfied.
+    if (!splashFinished || !gameReady || started) return;
+
+    splashScreen.classList.add('fade-out');
+
+    setTimeout(() => {
+      if (started) return;
+
+      splashScreen.classList.remove('active');
+      menuScreen.classList.add('active');
+
+      startButton.hidden = false;
+      startButton.disabled = false;
+      startButton.textContent = 'START DRIVING';
+    }, 900);
+  }
+
+  window.addEventListener('message', (event) => {
+    if (event.source !== window.parent) return;
+    if (event.origin !== window.location.origin) return;
+
+    const message = event.data;
+    if (!message || typeof message.type !== 'string') return;
+
+    if (message.type === 'HOOD_GAME_READY') {
+      gameReady = true;
+      updateScreen();
+    }
+
+    if (message.type === 'HOOD_GAME_ERROR') {
+      console.error(
+        '[HOOD Splash] Game loading failed:',
+        message.message
+      );
+    }
+  });
+
+  // The sponsor animation gets its full five seconds.
+  // If the game is not ready, the animation stays visible.
+  setTimeout(() => {
+    splashFinished = true;
+    updateScreen();
+  }, 5000);
+
+  function requestStart() {
+    if (started || !splashFinished || !gameReady) return;
+
+    started = true;
+    startButton.disabled = true;
+    startButton.textContent = 'STARTING DRIVE...';
+
+    notifyParent('HOOD_START_GAME');
+  }
+
+  startButton.addEventListener('click', requestStart);
+
+  window.addEventListener('keydown', (event) => {
+    if (event.repeat || event.ctrlKey || event.altKey ||
+        event.metaKey || event.shiftKey) return;
+
+    if (
+      !startButton.hidden &&
+      !startButton.disabled &&
+      (event.key === 'Enter' || event.key === ' ')
+    ) {
+      event.preventDefault();
+      requestStart();
+    }
+  });
+
+  // Ask the parent to check whether the engine is already ready.
+  notifyParent('HOOD_SPLASH_LOADED');
+})();
+</script>
+
+</body>
+</html>
