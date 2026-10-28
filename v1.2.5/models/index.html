@@ -1,0 +1,652 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HOOD | Subaru Animation Lab</title>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #090c12;
+      color: #e8edf5;
+      font-family: Arial, sans-serif;
+    }
+
+    #stage {
+      position: fixed;
+      inset: 0;
+    }
+
+    #panel {
+      position: fixed;
+      z-index: 5;
+      top: 18px;
+      left: 18px;
+      width: min(320px, calc(100vw - 36px));
+      max-height: calc(100vh - 36px);
+      overflow-y: auto;
+      padding: 18px;
+      background: rgba(12, 17, 26, .94);
+      border: 1px solid #273344;
+      border-radius: 12px;
+    }
+
+    h2 {
+      margin: 0 0 5px;
+      letter-spacing: 2px;
+    }
+
+    .muted {
+      color: #93a2b6;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    button, input {
+      width: 100%;
+      margin-top: 9px;
+      padding: 11px;
+      color: #eef4ff;
+      background: #192435;
+      border: 1px solid #35455b;
+      border-radius: 6px;
+    }
+
+    button { cursor: pointer; }
+    button:hover { background: #263950; }
+
+    button.primary {
+      background: #1759a8;
+      border-color: #347ed2;
+    }
+
+    #status {
+      padding: 10px;
+      margin-top: 12px;
+      border-radius: 6px;
+      background: #111b28;
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    #nodeList {
+      max-height: 190px;
+      overflow: auto;
+      font-size: 12px;
+      line-height: 1.8;
+    }
+
+    .node {
+      padding: 3px 5px;
+      border-bottom: 1px solid #202d3d;
+    }
+
+    #hint {
+      position: fixed;
+      bottom: 16px;
+      right: 18px;
+      color: #c5d0de;
+      background: #101722dd;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+    }
+  </style>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./vendor/three/build/three.module.js",
+      "three/addons/": "./vendor/three/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+
+<body>
+  <div id="stage"></div>
+
+  <section id="panel">
+    <h2>HOOD LAB</h2>
+    <div class="muted">SUBARU • MOTION PROTOTYPE 001</div>
+
+    <button class="primary" id="startup">
+      Cinematic Startup
+    </button>
+
+    <button id="spin">Wheel Spin</button>
+    <button id="steer">Steering Test</button>
+    <button id="headlights">Toggle Headlights</button>
+    <button id="brakes">Brake Lights</button>
+    <button id="reset">Reset Model</button>
+
+    <label for="modelFile" class="muted">
+      Load a local GLB for testing
+    </label>
+    <input id="modelFile" type="file" accept=".glb,.gltf">
+
+    <label for="search" class="muted">Search model parts</label>
+    <input id="search" placeholder="wheel, door, bonnet...">
+
+    <div id="status">Loading Subaru model...</div>
+
+    <h3>Discovered nodes</h3>
+    <div id="nodeList"></div>
+  </section>
+
+  <div id="hint">
+    Drag to orbit · Scroll to zoom
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from
+      'three/addons/loaders/GLTFLoader.js';
+
+    // ---------------------------------------
+    // 1. MODEL CONFIGURATION
+    // ---------------------------------------
+
+    const MODEL_URL = './models/subaru.glb';
+
+    // Replace these patterns with the real node names
+    // after checking the discovered-nodes list.
+    const PARTS = {
+      wheels: [
+        /wheel.*(fl|front.?left|lf)/i,
+        /wheel.*(fr|front.?right|rf)/i,
+        /wheel.*(rl|rear.?left|lr)/i,
+        /wheel.*(rr|rear.?right|rr)/i
+      ],
+      steering: /steering.?wheel/i,
+      headlights: /head.?light|headlamp/i,
+      brakeLights: /tail.?light|brake.?light/i,
+      bonnet: /bonnet|hood/i,
+      doors: /door/i
+    };
+
+    // ---------------------------------------
+    // 2. THREE.JS SCENE
+    // ---------------------------------------
+
+    const stage = document.querySelector('#stage');
+    const status = document.querySelector('#status');
+    const nodeList = document.querySelector('#nodeList');
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x090c12);
+
+    const camera = new THREE.PerspectiveCamera(
+      45,
+      innerWidth / innerHeight,
+      0.1,
+      2000
+    );
+
+    camera.position.set(5, 3, 7);
+
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      powerPreference: 'high-performance'
+    });
+
+    renderer.setPixelRatio(
+      Math.min(devicePixelRatio, 1.75)
+    );
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+
+    stage.appendChild(renderer.domElement);
+
+    scene.add(new THREE.HemisphereLight(
+      0xdceaff, 0x24212a, 2.0
+    ));
+
+    const keyLight = new THREE.DirectionalLight(
+      0xffffff, 3.0
+    );
+    keyLight.position.set(5, 8, 5);
+    scene.add(keyLight);
+
+    const rimLight = new THREE.DirectionalLight(
+      0x448cff, 2.0
+    );
+    rimLight.position.set(-5, 3, -4);
+    scene.add(rimLight);
+
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(200, 200),
+      new THREE.MeshStandardMaterial({
+        color: 0x111722,
+        roughness: 0.75,
+        metalness: 0.15
+      })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = -0.02;
+    scene.add(floor);
+
+    // ---------------------------------------
+    // 3. BASIC ORBIT CAMERA
+    // ---------------------------------------
+
+    const target = new THREE.Vector3(0, 0.8, 0);
+    let dragging = false;
+    let previousX = 0;
+    let previousY = 0;
+    let cameraAngle = Math.PI / 4;
+    let cameraElevation = 0.25;
+    let cameraDistance = 8;
+
+    function updateCamera() {
+      camera.position.set(
+        target.x + Math.sin(cameraAngle) *
+          cameraDistance * Math.cos(cameraElevation),
+        target.y + cameraDistance *
+          Math.sin(cameraElevation),
+        target.z + Math.cos(cameraAngle) *
+          cameraDistance * Math.cos(cameraElevation)
+      );
+      camera.lookAt(target);
+    }
+
+    renderer.domElement.addEventListener(
+      'pointerdown', event => {
+        dragging = true;
+        previousX = event.clientX;
+        previousY = event.clientY;
+        renderer.domElement.setPointerCapture(event.pointerId);
+      }
+    );
+
+    renderer.domElement.addEventListener(
+      'pointerup', () => dragging = false
+    );
+
+    renderer.domElement.addEventListener(
+      'pointermove', event => {
+        if (!dragging) return;
+
+        cameraAngle -=
+          (event.clientX - previousX) * 0.008;
+
+        cameraElevation = THREE.MathUtils.clamp(
+          cameraElevation +
+          (event.clientY - previousY) * 0.005,
+          -0.15, 1.2
+        );
+
+        previousX = event.clientX;
+        previousY = event.clientY;
+        updateCamera();
+      }
+    );
+
+    renderer.domElement.addEventListener(
+      'wheel', event => {
+        cameraDistance = THREE.MathUtils.clamp(
+          cameraDistance + event.deltaY * 0.01,
+          2.5, 30
+        );
+        updateCamera();
+      },
+      { passive: true }
+    );
+
+    // ---------------------------------------
+    // 4. MODEL STATE
+    // ---------------------------------------
+
+    let car = null;
+    let mixer = null;
+    let originalTransforms = new Map();
+    let discoveredNodes = [];
+    let wheelNodes = [];
+    let steeringNode = null;
+    let headlightNodes = [];
+    let brakeLightNodes = [];
+
+    let wheelSpinning = false;
+    let steeringActive = false;
+    let lightsOn = false;
+    let brakesOn = false;
+    let startupTime = -1;
+
+    const clock = new THREE.Clock();
+
+    function setStatus(message) {
+      status.textContent = message;
+    }
+
+    function snapshot(node) {
+      originalTransforms.set(node.uuid, {
+        position: node.position.clone(),
+        rotation: node.rotation.clone(),
+        scale: node.scale.clone()
+      });
+    }
+
+    function findMatchingNodes(pattern) {
+      return discoveredNodes.filter(node =>
+        pattern.test(node.name)
+      );
+    }
+
+    function listNodes() {
+      const query =
+        document.querySelector('#search').value.toLowerCase();
+
+      nodeList.replaceChildren();
+
+      discoveredNodes
+        .filter(node =>
+          node.name.toLowerCase().includes(query)
+        )
+        .slice(0, 300)
+        .forEach(node => {
+          const item = document.createElement('div');
+          item.className = 'node';
+          item.textContent =
+            `${node.isMesh ? 'MESH' : 'NODE'} · ${node.name || '(unnamed)'}`;
+          nodeList.appendChild(item);
+        });
+    }
+
+    // ---------------------------------------
+    // 5. LOAD AND INSPECT THE CAR
+    // ---------------------------------------
+
+    async function loadCar(source) {
+      setStatus('Loading 3D model...');
+
+      if (car) {
+        scene.remove(car);
+        car = null;
+      }
+
+      originalTransforms.clear();
+      wheelNodes = [];
+      steeringNode = null;
+      headlightNodes = [];
+      brakeLightNodes = [];
+      mixer = null;
+
+      try {
+        const loader = new GLTFLoader();
+
+        const gltf = source instanceof File
+          ? await loader.loadAsync(
+              URL.createObjectURL(source)
+            )
+          : await loader.loadAsync(source);
+
+        car = gltf.scene;
+        scene.add(car);
+
+        discoveredNodes = [];
+        car.traverse(node => {
+          discoveredNodes.push(node);
+          snapshot(node);
+
+          if (node.isMesh) {
+            node.castShadow = true;
+            node.receiveShadow = true;
+          }
+        });
+
+        // Frame the model automatically.
+        const bounds = new THREE.Box3().setFromObject(car);
+        const size = bounds.getSize(new THREE.Vector3());
+        const center = bounds.getCenter(new THREE.Vector3());
+
+        car.position.x -= center.x;
+        car.position.z -= center.z;
+        car.position.y -= bounds.min.y;
+
+        target.set(0, Math.max(size.y * 0.45, 0.5), 0);
+        cameraDistance = Math.max(size.length() * 0.95, 4);
+        updateCamera();
+
+        // Discover likely wheel nodes.
+        wheelNodes = discoveredNodes.filter(node =>
+          /wheel|tyre|tire/i.test(node.name) &&
+          !/steering.?wheel/i.test(node.name)
+        );
+
+        steeringNode = discoveredNodes.find(node =>
+          PARTS.steering.test(node.name)
+        ) || null;
+
+        headlightNodes = findMatchingNodes(PARTS.headlights);
+        brakeLightNodes = findMatchingNodes(PARTS.brakeLights);
+
+        // Use authored clips if the GLB contains any.
+        if (gltf.animations.length) {
+          mixer = new THREE.AnimationMixer(car);
+          console.info(
+            'GLB animation clips:',
+            gltf.animations.map(clip => clip.name)
+          );
+        }
+
+        listNodes();
+
+        console.table(discoveredNodes.map(node => ({
+          name: node.name,
+          type: node.type,
+          mesh: node.isMesh,
+          position: node.position.toArray()
+        })));
+
+        setStatus(
+          `Loaded successfully. ${discoveredNodes.length} nodes, ` +
+          `${wheelNodes.length} possible wheel nodes, ` +
+          `${gltf.animations.length} authored animations. ` +
+          'Check the browser console for node details.'
+        );
+      } catch (error) {
+        console.error(error);
+        setStatus('Could not load model: ' + error.message);
+      }
+    }
+
+    // ---------------------------------------
+    // 6. LIGHT EFFECTS
+    // ---------------------------------------
+
+    function setLightGroup(nodes, enabled, intensity = 4) {
+      nodes.forEach(node => {
+        node.traverse(child => {
+          if (!child.isMesh) return;
+
+          const materials = Array.isArray(child.material)
+            ? child.material
+            : [child.material];
+
+          materials.forEach(material => {
+            if (!material.emissive) return;
+
+            material.emissiveIntensity =
+              enabled ? intensity : 0;
+          });
+        });
+      });
+    }
+
+    // Separate light sources make the effect visible
+    // even if the GLB's lamps have no emissive material.
+    const headlamp = new THREE.SpotLight(
+      0xeaf4ff, 0, 25, Math.PI / 5, 0.5, 1
+    );
+    headlamp.position.set(0.8, 0.7, 1);
+    scene.add(headlamp);
+
+    const brakeLamp = new THREE.PointLight(
+      0xff1010, 0, 5
+    );
+    brakeLamp.position.set(0, 0.8, -1.5);
+    scene.add(brakeLamp);
+
+    // ---------------------------------------
+    // 7. MOTION CONTROLS
+    // ---------------------------------------
+
+    document.querySelector('#spin').onclick = () => {
+      wheelSpinning = !wheelSpinning;
+      setStatus(wheelSpinning
+        ? 'Wheel spin active.'
+        : 'Wheel spin stopped.');
+    };
+
+    document.querySelector('#steer').onclick = () => {
+      steeringActive = !steeringActive;
+      setStatus(steeringActive
+        ? 'Steering sweep active.'
+        : 'Steering returned to neutral.');
+    };
+
+    document.querySelector('#headlights').onclick = () => {
+      lightsOn = !lightsOn;
+      headlamp.intensity = lightsOn ? 5 : 0;
+      setLightGroup(headlightNodes, lightsOn);
+    };
+
+    document.querySelector('#brakes').onclick = () => {
+      brakesOn = !brakesOn;
+      brakeLamp.intensity = brakesOn ? 4 : 0;
+      setLightGroup(brakeLightNodes, brakesOn, 5);
+    };
+
+    document.querySelector('#startup').onclick = () => {
+      startupTime = 0;
+      lightsOn = true;
+      headlamp.intensity = 5;
+      setLightGroup(headlightNodes, true);
+      setStatus('Playing cinematic startup...');
+    };
+
+    document.querySelector('#reset').onclick = () => {
+      wheelSpinning = false;
+      steeringActive = false;
+      lightsOn = false;
+      brakesOn = false;
+      startupTime = -1;
+
+      originalTransforms.forEach((transform, uuid) => {
+        const node = discoveredNodes.find(
+          item => item.uuid === uuid
+        );
+        if (!node) return;
+
+        node.position.copy(transform.position);
+        node.rotation.copy(transform.rotation);
+        node.scale.copy(transform.scale);
+      });
+
+      headlamp.intensity = 0;
+      brakeLamp.intensity = 0;
+      setLightGroup(headlightNodes, false);
+      setLightGroup(brakeLightNodes, false);
+
+      setStatus('Motion reset.');
+    };
+
+    document.querySelector('#search').addEventListener(
+      'input', listNodes
+    );
+
+    document.querySelector('#modelFile').addEventListener(
+      'change', event => {
+        const file = event.target.files[0];
+        if (file) loadCar(file);
+      }
+    );
+
+    // ---------------------------------------
+    // 8. ANIMATION LOOP
+    // ---------------------------------------
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const delta = Math.min(clock.getDelta(), 0.05);
+      const time = clock.elapsedTime;
+
+      if (mixer) mixer.update(delta);
+
+      if (wheelSpinning) {
+        wheelNodes.forEach(wheel => {
+          // The correct spin axis must be confirmed
+          // against the actual model.
+          wheel.rotation.x += delta * 8;
+        });
+      }
+
+      if (steeringNode) {
+        const original =
+          originalTransforms.get(steeringNode.uuid);
+
+        if (original) {
+          steeringNode.rotation.y =
+            original.rotation.y +
+            (steeringActive
+              ? Math.sin(time * 1.8) * 0.45
+              : 0);
+        }
+      }
+
+      if (startupTime >= 0) {
+        startupTime += delta;
+
+        // Subtle engine-idle body movement.
+        if (car) {
+          const body = discoveredNodes.find(node =>
+            /body|chassis/i.test(node.name)
+          );
+
+          if (body) {
+            const original =
+              originalTransforms.get(body.uuid);
+
+            if (original) {
+              body.position.y =
+                original.position.y +
+                Math.sin(startupTime * 12) * 0.003;
+            }
+          }
+        }
+
+        // Slow camera push-in.
+        cameraDistance = Math.max(
+          cameraDistance - delta * 0.18,
+          3.5
+        );
+        updateCamera();
+
+        if (startupTime > 8) {
+          startupTime = -1;
+          setStatus('Startup sequence complete.');
+        }
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    addEventListener('resize', () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+
+    animate();
+    loadCar(MODEL_URL);
+  </script>
+</body>
+</html>
