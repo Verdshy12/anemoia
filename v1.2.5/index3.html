@@ -657,7 +657,11 @@
       }
     }
   </style>
-  <script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.js","three/addons/":"./vendor/three/addons/"}}</script>
+  <script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.js","three/addons/":"./vendor/three/addons/","@vercel/analytics":"./node_modules/@vercel/analytics/dist/index.mjs"}}</script>
+  <script type="module">
+    import { inject } from '@vercel/analytics';
+    inject();
+  </script>
 </head>
 <body>
   <main id="stage">
