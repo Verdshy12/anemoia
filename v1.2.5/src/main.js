@@ -1,6 +1,7 @@
 /* src/main.js — composition root.
  *Creates systems, wires them, owns nothing else. */
 
+import { inject } from '@vercel/analytics';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
@@ -1037,6 +1038,9 @@ function changeRoute() {
   history.replaceState(null, '', location.pathname + '?picker=1');
   location.reload();
 }
+
+// Initialize Vercel Web Analytics
+inject();
 
 bootEngine().catch((e) => {
   game.error = String(e);
