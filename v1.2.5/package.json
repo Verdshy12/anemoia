@@ -12,6 +12,7 @@
     "build:routes": "node tools/build-routes.mjs data/tiles/state-house.json data/routes/real-road-v1.2.2.json"
   },
   "dependencies": {
+    "@vercel/speed-insights": "^2.0.0",
     "three": "0.186.1"
   },
   "devDependencies": {
